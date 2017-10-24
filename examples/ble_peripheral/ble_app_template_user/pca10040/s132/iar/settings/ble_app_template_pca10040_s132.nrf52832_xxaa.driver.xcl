@@ -10,6 +10,8 @@
 
 "C:\Program Files (x86)\IAR Systems\Embedded Workbench 7.5\arm\CONFIG\debugger\NordicSemi\nRF52832-xxAA.ddf" 
 
+"--drv_verify_download" 
+
 "--semihosting=none" 
 
 "--device=nRF52832-xxAA" 

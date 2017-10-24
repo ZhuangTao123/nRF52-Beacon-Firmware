@@ -79,20 +79,30 @@
 #include "nrf_log_ctrl.h"
 #include "nrf_log_default_backends.h"
 
+// DFU include files
+#include "nrf_dfu_svci.h"
+#include "nrf_svci_async_function.h"
+#include "nrf_svci_async_handler.h"
+#include "ble_dfu.h"
+#include "nrf_pwr_mgmt.h"
+#include "nrf_drv_clock.h"
+
+// Custom include files
 #include "ble_bcs.h"
 #include "ble_tps.h"
 #include "bdef_file_m.h"
 
+
 #define APP_FEATURE_NOT_SUPPORTED       BLE_GATT_STATUS_ATTERR_APP_BEGIN + 2    /**< Reply when unsupported features are requested. */
 
-#define DEVICE_NAME                     "LBTest"                               /**< Name of device. Will be included in the advertising data. */
+#define DEVICE_NAME                     "LBTest"                       			/**< Name of device. Will be included in the advertising data. */
 #define MANUFACTURER_NAME               "NordicSemiconductor"                   /**< Manufacturer. Will be passed to Device Information Service. */
-#define APP_ADV_FAST_INTERVAL           160                                     /**< The advertising interval (in units of 0.625 ms. This value corresponds to 100 ms). */
+#define APP_ADV_FAST_INTERVAL           320                                     /**< The advertising interval (in units of 0.625 ms. This value corresponds to 100 ms). */
 #define APP_ADV_FAST_TIMEOUT            0                                       /**< The advertising timeout in units of seconds. */
 #define APP_ADV_SLOW_INTERVAL           3200                                    /**< The advertising interval (in units of 0.625 ms. This value corresponds to 1000 ms). */
 #define APP_ADV_SLOW_TIMEOUT            0                                       /**< The advertising timeout in units of seconds. */
 
-#define APP_BLE_OBSERVER_PRIO           1                                       /**< Application's BLE observer priority. You shouldn't need to modify this value. */
+#define APP_BLE_OBSERVER_PRIO           3                                       /**< Application's BLE observer priority. You shouldn't need to modify this value. */
 #define APP_BLE_CONN_CFG_TAG            1                                       /**< A tag identifying the SoftDevice BLE configuration. */
 
 #define MIN_CONN_INTERVAL               MSEC_TO_UNITS(100, UNIT_1_25_MS)        /**< Minimum acceptable connection interval (0.1 seconds). */
@@ -105,10 +115,10 @@
 #define MAX_CONN_PARAMS_UPDATE_COUNT    3                                       /**< Number of attempts before giving up the connection parameter negotiation. */
 
 #define SEC_PARAM_BOND                  1                                       /**< Perform bonding. */
-#define SEC_PARAM_MITM                  0                                       /**< Man In The Middle protection not required. */
+#define SEC_PARAM_MITM                  1                                       /**< Man In The Middle protection not required. */
 #define SEC_PARAM_LESC                  0                                       /**< LE Secure Connections not enabled. */
 #define SEC_PARAM_KEYPRESS              0                                       /**< Keypress notifications not enabled. */
-#define SEC_PARAM_IO_CAPABILITIES       BLE_GAP_IO_CAPS_NONE                    /**< No I/O capabilities. */
+#define SEC_PARAM_IO_CAPABILITIES       BLE_GAP_IO_CAPS_DISPLAY_ONLY            /**< Display I/O capabilities. */
 #define SEC_PARAM_OOB                   0                                       /**< Out Of Band data not available. */
 #define SEC_PARAM_MIN_KEY_SIZE          7                                       /**< Minimum encryption key size. */
 #define SEC_PARAM_MAX_KEY_SIZE          16                                      /**< Maximum encryption key size. */
@@ -133,26 +143,33 @@
 #define TX_POWER_LEVEL					-4
 #define DEAD_BEEF                       0xDEADBEEF                              /**< Value used as error code on stack dump, can be used to identify stack location on stack unwind. */
 
-/* Declare all services structure your application is using
- * BLE_XYZ_DEF(m_xyz);
- */
+#define PASSKEY_TXT                     "Passkey:"                              /**< Message to be displayed together with the pass-key. */
+#define PASSKEY_TXT_LENGTH              8                                       /**< Length of message to be displayed together with the pass-key. */
+#define PASSKEY_LENGTH                  6                                       /**< Length of pass-key received by the stack for display. */
+#define SECURITY_REQUEST_DELAY          APP_TIMER_TICKS(400)                    /**< Delay after connection until Security Request is sent, if necessary (ticks). */
+
+
 NRF_BLE_GATT_DEF(m_gatt);                                                       /**< GATT module instance. */
 BLE_ADVERTISING_DEF(m_advertising);                                             /**< Advertising module instance. */
 BLE_BCS_DEF(m_bcs);																/**< Beacon Service instance. */
 BLE_TPS_DEF(m_tps);																/**< Tx Power Service instance. */
+APP_TIMER_DEF(m_sec_req_timer_id);                                              /**< Security Request timer. */
 
 // Global variables in the application
-static uint16_t m_conn_handle 		= BLE_CONN_HANDLE_INVALID;                  /**< Handle of the current connection. */
-static int8_t	tx_power			= TX_POWER_LEVEL;							/**< Tx Power passed to the program. */
-static uint16_t	app_adv_interval 	= APP_ADV_FAST_INTERVAL;					/**< Advertising interval passed to the program. */
-static bool 	app_adv_param_update = false;
-static bool		app_tx_power_param_update = false;
-static bool		app_flash_update_state = false;
+static pm_peer_id_t m_peer_to_be_deleted 	= PM_PEER_ID_INVALID;
+static uint16_t m_conn_handle 				= BLE_CONN_HANDLE_INVALID;                  /**< Handle of the current connection. */
+static int8_t	tx_power					= TX_POWER_LEVEL;							/**< Tx Power passed to the program. */
+static uint16_t	app_adv_interval 			= APP_ADV_FAST_INTERVAL;					/**< Advertising interval passed to the program. */
+static bool 	app_adv_param_update 		= false;
+static bool		app_tx_power_param_update 	= false;
+static bool		app_flash_update_state 		= false;
+static bool		is_bond_deleted				= false;
+static bool		is_dfu_disconnect			= false;
+static uint8_t	passkey[]					= "703819";
 
 // YOUR_JOB: Use UUIDs for service(s) used in your application.
 static ble_uuid_t m_adv_uuids[] =                                               /**< Universally unique service identifiers. */
 {
-    //{BLE_UUID_TX_POWER_SERVICE, BLE_UUID_TYPE_BLE},
     {BLE_UUID_BCS_SERVICE, BLE_UUID_TYPE_VENDOR_BEGIN}
 };
 
@@ -180,6 +197,106 @@ beacon_conf_flash_t	beacon_conf =
 static void advertising_init(void);
 static void advertising_start(bool erase_bonds);
 
+/**@brief Handler for shutdown preparation.
+ *
+ * @details During shutdown procedures, this function will be called at a 1 second interval
+ *          untill the function returns true. When the function returns true, it means that the
+ *          app is ready to reset to DFU mode.
+ *
+ * @param[in]   event   Power manager event.
+ *
+ * @retval  True if shutdown is allowed by this power manager handler, otherwise false.
+ */
+static bool app_shutdown_handler(nrf_pwr_mgmt_evt_t event)
+{
+    switch (event)
+    {
+        case NRF_PWR_MGMT_EVT_PREPARE_DFU:
+            NRF_LOG_INFO("Power management wants to reset to DFU mode.");
+            // YOUR_JOB: Get ready to reset into DFU mode
+            //
+            // If you aren't finished with any ongoing tasks, return "false" to
+            // signal to the system that reset is impossible at this stage.
+            //
+            // Here is an example using a variable to delay resetting the device.
+            //
+            // if (!m_ready_for_reset)
+            // {
+            //      return false;
+            // }
+            // else
+            //{
+            //
+            //    // Device ready to enter
+            //    uint32_t err_code;
+            //    err_code = sd_softdevice_disable();
+            //    APP_ERROR_CHECK(err_code);
+            //    err_code = app_timer_stop_all();
+            //    APP_ERROR_CHECK(err_code);
+            //}
+            break;
+
+        default:
+            // YOUR_JOB: Implement any of the other events available from the power management module:
+            //      -NRF_PWR_MGMT_EVT_PREPARE_SYSOFF
+            //      -NRF_PWR_MGMT_EVT_PREPARE_WAKEUP
+            //      -NRF_PWR_MGMT_EVT_PREPARE_RESET
+            return true;
+    }
+
+    NRF_LOG_INFO("Power management allowed to reset to DFU mode.");
+    return true;
+}
+
+//lint -esym(528, m_app_shutdown_handler)
+/**@brief Register application shutdown handler with priority 0.
+ */
+NRF_PWR_MGMT_HANDLER_REGISTER(app_shutdown_handler, 0);
+
+// YOUR_JOB: Update this code if you want to do anything given a DFU event (optional).
+/**@brief Function for handling dfu events from the Buttonless Secure DFU service
+ *
+ * @param[in]   event   Event from the Buttonless Secure DFU service.
+ */
+static void ble_dfu_evt_handler(ble_dfu_buttonless_evt_type_t event)
+{
+    switch (event)
+    {
+        case BLE_DFU_EVT_BOOTLOADER_ENTER_PREPARE:
+            NRF_LOG_INFO("Device is preparing to enter bootloader mode.");
+            // YOUR_JOB: Disconnect all bonded devices that currently are connected.
+            //           This is required to receive a service changed indication
+            //           on bootup after a successful (or aborted) Device Firmware Update.
+            
+            is_dfu_disconnect = true;
+            break;
+
+        case BLE_DFU_EVT_BOOTLOADER_ENTER:
+            // YOUR_JOB: Write app-specific unwritten data to FLASH, control finalization of this
+            //           by delaying reset by reporting false in app_shutdown_handler
+            NRF_LOG_INFO("Device will enter bootloader mode.");
+            break;
+
+        case BLE_DFU_EVT_BOOTLOADER_ENTER_FAILED:
+            NRF_LOG_ERROR("Request to enter bootloader mode failed asynchroneously.");
+            // YOUR_JOB: Take corrective measures to resolve the issue
+            //           like calling APP_ERROR_CHECK to reset the device.
+            is_dfu_disconnect = false;
+            break;
+
+        case BLE_DFU_EVT_RESPONSE_SEND_ERROR:
+            NRF_LOG_ERROR("Request to send a response to client failed.");
+            // YOUR_JOB: Take corrective measures to resolve the issue
+            //           like calling APP_ERROR_CHECK to reset the device.
+            APP_ERROR_CHECK(false);
+            break;
+
+        default:
+            NRF_LOG_ERROR("Unknown event from ble_dfu_buttonless.");
+			is_dfu_disconnect = false;
+            break;
+    }
+}
 
 /**@brief Callback function for asserts in the SoftDevice.
  *
@@ -197,10 +314,6 @@ void assert_nrf_callback(uint16_t line_num, const uint8_t * p_file_name)
     app_error_handler(DEAD_BEEF, line_num, p_file_name);
 }
 
-/**@brief Function for loading user configuration of major and minor value
- *
- * @param[in] void	none input argument
- */
 static void load_uicr_configuration(void)
 {
 #if defined(USE_UICR_FOR_MAJ_MIN_VALUES)
@@ -223,6 +336,8 @@ static void load_uicr_configuration(void)
 
 	m_beacon_info[index++] = MSB_16(minor_value);
 	m_beacon_info[index++] = LSB_16(minor_value);
+
+	memcpy(&beacon_conf.uuid_major_minor[16], &m_beacon_info[MAJ_VAL_OFFSET_IN_BEACON_INFO], 4);
 #endif
 }
 
@@ -239,24 +354,49 @@ static void pm_evt_handler(pm_evt_t const * p_evt)
         case PM_EVT_BONDED_PEER_CONNECTED:
         {
             NRF_LOG_INFO("Connected to a previously bonded device.");
+			// Start Security Request timer.
+			err_code = app_timer_start(m_sec_req_timer_id, SECURITY_REQUEST_DELAY, NULL);
+            APP_ERROR_CHECK(err_code);
         } break;
 
         case PM_EVT_CONN_SEC_SUCCEEDED:
         {
-            NRF_LOG_INFO("Connection secured: role: %d, conn_handle: 0x%x, procedure: %d.",
-                         ble_conn_state_role(p_evt->conn_handle),
-                         p_evt->conn_handle,
-                         p_evt->params.conn_sec_succeeded.procedure);
+            pm_conn_sec_status_t conn_sec_status;
+
+            // Check if the link is authenticated (meaning at least MITM).
+            err_code = pm_conn_sec_status_get(p_evt->conn_handle, &conn_sec_status);
+            APP_ERROR_CHECK(err_code);
+
+            if (conn_sec_status.mitm_protected)
+            {
+				is_bond_deleted = false;
+                NRF_LOG_INFO("Link secured. Role: %d. conn_handle: %d, Procedure: %d",
+                             ble_conn_state_role(p_evt->conn_handle),
+                             p_evt->conn_handle,
+                             p_evt->params.conn_sec_succeeded.procedure);
+            }
+            else
+            {
+                // The peer did not use MITM, disconnect.
+                NRF_LOG_INFO("Collector did not use MITM, disconnecting");
+                err_code = pm_peer_id_get(m_conn_handle, &m_peer_to_be_deleted);
+                APP_ERROR_CHECK(err_code);
+                err_code = sd_ble_gap_disconnect(m_conn_handle,
+                                                 BLE_HCI_REMOTE_USER_TERMINATED_CONNECTION);
+                APP_ERROR_CHECK(err_code);
+            }
         } break;
 
         case PM_EVT_CONN_SEC_FAILED:
         {
-            /* Often, when securing fails, it shouldn't be restarted, for security reasons.
-             * Other times, it can be restarted directly.
-             * Sometimes it can be restarted, but only after changing some Security Parameters.
-             * Sometimes, it cannot be restarted until the link is disconnected and reconnected.
-             * Sometimes it is impossible, to secure the link, or the peer device does not support it.
-             * How to handle this error is highly application dependent. */
+            NRF_LOG_INFO("Failed to secure connection. Disconnecting.");
+            err_code = sd_ble_gap_disconnect(m_conn_handle,
+                                             BLE_HCI_REMOTE_USER_TERMINATED_CONNECTION);
+            if (err_code != NRF_ERROR_INVALID_STATE)
+            {
+                APP_ERROR_CHECK(err_code);
+            }
+            m_conn_handle = BLE_CONN_HANDLE_INVALID;
         } break;
 
         case PM_EVT_CONN_SEC_CONFIG_REQ:
@@ -282,7 +422,8 @@ static void pm_evt_handler(pm_evt_t const * p_evt)
 
         case PM_EVT_PEERS_DELETE_SUCCEEDED:
         {
-            advertising_start(false);
+            //advertising_start(false);
+            is_bond_deleted = true;
         } break;
 
         case PM_EVT_LOCAL_DB_CACHE_APPLY_FAILED:
@@ -326,6 +467,28 @@ static void pm_evt_handler(pm_evt_t const * p_evt)
     }
 }
 
+/**@brief Function for handling the Security Request timer timeout.
+ *
+ * @details This function will be called each time the Security Request timer expires.
+ *
+ * @param[in] p_context  Pointer used for passing some arbitrary information (context) from the
+ *                       app_start_timer() call to the timeout handler.
+ */
+static void sec_req_timeout_handler(void * p_context)
+{
+    ret_code_t err_code;
+
+    if (m_conn_handle != BLE_CONN_HANDLE_INVALID)
+    {
+        // Initiate bonding.
+        NRF_LOG_DEBUG("Start encryption");
+        err_code = pm_conn_secure(m_conn_handle, false);
+        if (err_code != NRF_ERROR_INVALID_STATE)
+        {
+            APP_ERROR_CHECK(err_code);
+        }
+    }
+}
 
 /**@brief Function for the Timer initialization.
  *
@@ -339,13 +502,12 @@ static void timers_init(void)
 
     // Create timers.
 
-    /* YOUR_JOB: Create any timers to be used by the application.
-                 Below is an example of how to create a timer.
-                 For every new timer needed, increase the value of the macro APP_TIMER_MAX_TIMERS by
-                 one.
-       ret_code_t err_code;
-       err_code = app_timer_create(&m_app_timer_id, APP_TIMER_MODE_REPEATED, timer_timeout_handler);
-       APP_ERROR_CHECK(err_code); */
+    // Create Security Request timer.
+    err_code = app_timer_create(&m_sec_req_timer_id,
+                                APP_TIMER_MODE_SINGLE_SHOT,
+                                sec_req_timeout_handler);
+    APP_ERROR_CHECK(err_code);
+
 }
 
 
@@ -359,8 +521,10 @@ static void gap_params_init(void)
     ret_code_t              err_code;
     ble_gap_conn_params_t   gap_conn_params;
     ble_gap_conn_sec_mode_t sec_mode;
+	ble_opt_t				ble_opt;
 
-    BLE_GAP_CONN_SEC_MODE_SET_OPEN(&sec_mode);
+    //BLE_GAP_CONN_SEC_MODE_SET_OPEN(&sec_mode);
+    BLE_GAP_CONN_SEC_MODE_SET_ENC_WITH_MITM(&sec_mode);
 
     err_code = sd_ble_gap_device_name_set(&sec_mode,
                                           (const uint8_t *)DEVICE_NAME,
@@ -370,6 +534,7 @@ static void gap_params_init(void)
     /* YOUR_JOB: Use an appearance value matching the application's use case.
        err_code = sd_ble_gap_appearance_set(BLE_APPEARANCE_);
        APP_ERROR_CHECK(err_code); */
+    ble_opt.gap_opt.passkey.p_passkey = &passkey[0];
 
     memset(&gap_conn_params, 0, sizeof(gap_conn_params));
 
@@ -381,6 +546,10 @@ static void gap_params_init(void)
     err_code = sd_ble_gap_ppcp_set(&gap_conn_params);
     APP_ERROR_CHECK(err_code);
 
+	err_code = sd_ble_opt_set(BLE_GAP_OPT_PASSKEY, &ble_opt);
+	APP_ERROR_CHECK(err_code);
+
+	// Retrieved tx power value from flash/default configuration.
 	tx_power = beacon_conf.tx_power_stored;
 	err_code = sd_ble_gap_tx_power_set(tx_power);
 	APP_ERROR_CHECK(err_code);
@@ -394,6 +563,7 @@ static void gatt_init(void)
     ret_code_t err_code = nrf_ble_gatt_init(&m_gatt, NULL);
     APP_ERROR_CHECK(err_code);
 }
+
 
 /**@brief Function for handling the data from the Beacon Service.
  *
@@ -453,42 +623,17 @@ static void tps_data_handler(ble_tps_evt_t * p_evt)
 	p_data = NULL;
 }
 
-/**@snippet [Handling the data received over BLE] */
-
-
-/**@brief Function for handling the YYY Service events.
- * YOUR_JOB implement a service handler function depending on the event the service you are using can generate
- *
- * @details This function will be called for all YY Service events which are passed to
- *          the application.
- *
- * @param[in]   p_yy_service   YY Service structure.
- * @param[in]   p_evt          Event received from the YY Service.
- *
- *
-static void on_yys_evt(ble_yy_service_t     * p_yy_service,
-                       ble_yy_service_evt_t * p_evt)
-{
-    switch (p_evt->evt_type)
-    {
-        case BLE_YY_NAME_EVT_WRITE:
-            APPL_LOG("[APPL]: charact written with value %s. ", p_evt->params.char_xx.value.p_str);
-            break;
-
-        default:
-            // No implementation needed.
-            break;
-    }
-}
-*/
-
 /**@brief Function for initializing services that will be used by the application.
  */
 static void services_init(void)
 {
 	ret_code_t			err_code;
-	ble_bcs_init_t		bcs_init;
+    ble_bcs_init_t		bcs_init;
 	ble_tps_init_t		tps_init;
+	ble_dfu_buttonless_init_t dfus_init =
+    {
+        .evt_handler = ble_dfu_evt_handler
+    };
 
 	// Initialize Beacon Service
 	memset(&bcs_init, 0, sizeof(bcs_init));
@@ -505,12 +650,19 @@ static void services_init(void)
 	tps_init.initial_tx_power_level = tx_power;
 	tps_init.data_handler = tps_data_handler;
 	
-	BLE_GAP_CONN_SEC_MODE_SET_OPEN(&tps_init.tps_attr_md.read_perm);
-	BLE_GAP_CONN_SEC_MODE_SET_OPEN(&tps_init.tps_attr_md.write_perm);
+	BLE_GAP_CONN_SEC_MODE_SET_ENC_WITH_MITM(&tps_init.tps_attr_md.read_perm);
+	BLE_GAP_CONN_SEC_MODE_SET_ENC_WITH_MITM(&tps_init.tps_attr_md.write_perm);
 
 	err_code = ble_tps_init(&m_tps, &tps_init);
 	APP_ERROR_CHECK(err_code);
-	
+
+	// Initialize the async SVCI interface to bootloader.
+    err_code = ble_dfu_buttonless_async_svci_init();
+    APP_ERROR_CHECK(err_code);
+
+
+    err_code = ble_dfu_buttonless_init(&dfus_init);
+    APP_ERROR_CHECK(err_code);
 }
 
 
@@ -638,14 +790,21 @@ static void on_adv_evt(ble_adv_evt_t ble_adv_evt)
 static void ble_evt_handler(ble_evt_t const * p_ble_evt, void * p_context)
 {
     ret_code_t err_code = NRF_SUCCESS;
+	uint8_t	peer_count = 0;
 
     switch (p_ble_evt->header.evt_id)
     {
         case BLE_GAP_EVT_DISCONNECTED:
             NRF_LOG_INFO("Disconnected.");
-            err_code = bsp_indication_set(BSP_INDICATE_IDLE);
-            APP_ERROR_CHECK(err_code);
 			m_conn_handle = BLE_CONN_HANDLE_INVALID;
+            // LED indication will be changed when advertising starts.
+            if((peer_count = pm_peer_count()) > 0 && is_dfu_disconnect == false)
+			{
+				err_code = pm_peers_delete();
+				APP_ERROR_CHECK(err_code);
+				err_code = pm_whitelist_set(NULL, 0);
+				APP_ERROR_CHECK(err_code);
+			}
 			if(app_flash_update_state)
 			{
 				app_flash_update_state = false;
@@ -664,19 +823,23 @@ static void ble_evt_handler(ble_evt_t const * p_ble_evt, void * p_context)
 			{
 				app_adv_param_update = false;
 				advertising_init();
-				err_code = ble_advertising_start(&m_advertising, BLE_ADV_MODE_FAST);
-				APP_ERROR_CHECK(err_code);
+				//err_code = ble_advertising_start(&m_advertising, BLE_ADV_MODE_FAST);
+				//APP_ERROR_CHECK(err_code);
 			}
             break;
 
         case BLE_GAP_EVT_CONNECTED:
             NRF_LOG_INFO("Connected.");
+			m_peer_to_be_deleted = PM_PEER_ID_INVALID;
             err_code = bsp_indication_set(BSP_INDICATE_CONNECTED);
             APP_ERROR_CHECK(err_code);
             m_conn_handle = p_ble_evt->evt.gap_evt.conn_handle;
+			// Start Security Request timer.
+            err_code = app_timer_start(m_sec_req_timer_id, SECURITY_REQUEST_DELAY, NULL);
+            APP_ERROR_CHECK(err_code);
             break;
 
-#if defined(S132)
+#ifndef S140
         case BLE_GAP_EVT_PHY_UPDATE_REQUEST:
         {
             NRF_LOG_DEBUG("PHY update request.");
@@ -707,7 +870,7 @@ static void ble_evt_handler(ble_evt_t const * p_ble_evt, void * p_context)
             break;
 
         case BLE_EVT_USER_MEM_REQUEST:
-            err_code = sd_ble_user_mem_reply(p_ble_evt->evt.gattc_evt.conn_handle, NULL);
+            err_code = sd_ble_user_mem_reply(m_conn_handle, NULL);
             APP_ERROR_CHECK(err_code);
             break;
 
@@ -880,6 +1043,7 @@ static void advertising_init(void)
 	{
 		memcpy(&m_beacon_info[2], &beacon_conf.uuid_major_minor, 21);
 	}
+	// Retrieved advertising interval from flash/default configuration
 	app_adv_interval = beacon_conf.advertising_interval_stored;
 
     manuf_specific_data.data.p_data = (uint8_t *) m_beacon_info;
@@ -921,7 +1085,7 @@ static void buttons_leds_init(bool * p_erase_bonds)
     ret_code_t err_code;
     bsp_event_t startup_event;
 
-    err_code = bsp_init(BSP_INIT_LED | BSP_INIT_BUTTONS, bsp_event_handler);
+    err_code = bsp_init(BSP_INIT_LED, bsp_event_handler);
     APP_ERROR_CHECK(err_code);
 
     err_code = bsp_btn_ble_init(NULL, &startup_event);
@@ -958,7 +1122,10 @@ static void advertising_start(bool erase_bonds)
     if (erase_bonds == true)
     {
         delete_bonds();
-        // Advertising is started by PM_EVT_PEERS_DELETED_SUCEEDED evetnt
+        // Advertising is started by PM_EVT_PEERS_DELETED_SUCEEDED event
+        while(!is_bond_deleted);
+        ret_code_t err_code = ble_advertising_start(&m_advertising, BLE_ADV_MODE_FAST);
+        APP_ERROR_CHECK(err_code);
     }
     else
     {
@@ -968,17 +1135,24 @@ static void advertising_start(bool erase_bonds)
     }
 }
 
+static void power_management_init(void)
+{
+    uint32_t err_code = nrf_pwr_mgmt_init();
+    APP_ERROR_CHECK(err_code);
+}
+
 
 /**@brief Function for application main entry.
  */
 int main(void)
 {
     bool erase_bonds;
-	ret_code_t	err_code;
+	ret_code_t err_code;
 
     // Initialize.
     log_init();
     timers_init();
+	power_management_init();
     buttons_leds_init(&erase_bonds);
 	// Load UICR
 	load_uicr_configuration();
@@ -991,15 +1165,16 @@ int main(void)
 	err_code = bdef_file_load((uint8_t *)&beacon_conf, sizeof(beacon_conf));
 	APP_ERROR_CHECK(err_code);
 	// Initialize gap, gatt, services, advertising and pm
+	peer_manager_init();
     gap_params_init();
     gatt_init();
-    services_init();
+	services_init();
     advertising_init();
     conn_params_init();
-    peer_manager_init();
+    //peer_manager_init();
 
     // Start execution.
-    NRF_LOG_INFO("Template example started.");
+    NRF_LOG_INFO("Application started.");
     application_timers_start();
 
     advertising_start(erase_bonds);
@@ -1007,10 +1182,14 @@ int main(void)
     // Enter main loop.
     for (;;)
     {
+		/*
         if (NRF_LOG_PROCESS() == false)
         {
-            power_manage();
+            //power_manage();
+			nrf_pwr_mgmt_run();
         }
+        */
+        nrf_pwr_mgmt_run();
     }
 }
 

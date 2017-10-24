@@ -194,11 +194,13 @@
           <state>NRF52</state>
           <state>NRF52832_XXAA</state>
           <state>NRF52_PAN_74</state>
+          <state>NRF_DFU_SVCI_ENABLED</state>
           <state>NRF_SD_BLE_API_VERSION=5</state>
           <state>S132</state>
           <state>SOFTDEVICE_PRESENT</state>
           <state>SWI_DISABLE0</state>
           <state>USE_IBEACON_PROTOCOL</state>
+          <state>USE_UICR_FOR_MAJ_MIN_VALUES</state>
         </option>
         <option>
           <name>CCPreprocFile</name>
@@ -389,14 +391,15 @@
           <state>$PROJ_DIR$\..\..\..\..\..\..\components\libraries\atomic</state>
           <state>$PROJ_DIR$\..\..\..\..\..\..\components\libraries\atomic_fifo</state>
           <state>$PROJ_DIR$\..\..\..\..\..\..\components\libraries\balloc</state>
+          <state>$PROJ_DIR$\..\..\..\..\..\..\components\libraries\bootloader\dfu</state>
           <state>$PROJ_DIR$\..\..\..\..\..\..\components\libraries\bsp</state>
           <state>$PROJ_DIR$\..\..\..\..\..\..\components\libraries\button</state>
+          <state>$PROJ_DIR$\..\..\..\..\..\..\components\libraries\cli</state>
           <state>$PROJ_DIR$\..\..\..\..\..\..\components\libraries\crc16</state>
           <state>$PROJ_DIR$\..\..\..\..\..\..\components\libraries\crc32</state>
           <state>$PROJ_DIR$\..\..\..\..\..\..\components\libraries\csense</state>
           <state>$PROJ_DIR$\..\..\..\..\..\..\components\libraries\csense_drv</state>
           <state>$PROJ_DIR$\..\..\..\..\..\..\components\libraries\ecc</state>
-          <state>$PROJ_DIR$\..\..\..\..\..\..\components\libraries\experimental_cli</state>
           <state>$PROJ_DIR$\..\..\..\..\..\..\components\libraries\experimental_log</state>
           <state>$PROJ_DIR$\..\..\..\..\..\..\components\libraries\experimental_log\src</state>
           <state>$PROJ_DIR$\..\..\..\..\..\..\components\libraries\experimental_memobj</state>
@@ -417,8 +420,10 @@
           <state>$PROJ_DIR$\..\..\..\..\..\..\components\libraries\sensorsim</state>
           <state>$PROJ_DIR$\..\..\..\..\..\..\components\libraries\slip</state>
           <state>$PROJ_DIR$\..\..\..\..\..\..\components\libraries\strerror</state>
+          <state>$PROJ_DIR$\..\..\..\..\..\..\components\libraries\svc</state>
           <state>$PROJ_DIR$\..\..\..\..\..\..\components\libraries\timer</state>
           <state>$PROJ_DIR$\..\..\..\..\..\..\components\libraries\twi</state>
+          <state>$PROJ_DIR$\..\..\..\..\..\..\components\libraries\twi_mngr</state>
           <state>$PROJ_DIR$\..\..\..\..\..\..\components\libraries\uart</state>
           <state>$PROJ_DIR$\..\..\..\..\..\..\components\libraries\usbd</state>
           <state>$PROJ_DIR$\..\..\..\..\..\..\components\libraries\usbd\class\audio</state>
@@ -765,12 +770,12 @@
           <state>$PROJ_DIR$\..\..\..\..\..\..\components\libraries\balloc</state>
           <state>$PROJ_DIR$\..\..\..\..\..\..\components\libraries\bsp</state>
           <state>$PROJ_DIR$\..\..\..\..\..\..\components\libraries\button</state>
+          <state>$PROJ_DIR$\..\..\..\..\..\..\components\libraries\cli</state>
           <state>$PROJ_DIR$\..\..\..\..\..\..\components\libraries\crc16</state>
           <state>$PROJ_DIR$\..\..\..\..\..\..\components\libraries\crc32</state>
           <state>$PROJ_DIR$\..\..\..\..\..\..\components\libraries\csense</state>
           <state>$PROJ_DIR$\..\..\..\..\..\..\components\libraries\csense_drv</state>
           <state>$PROJ_DIR$\..\..\..\..\..\..\components\libraries\ecc</state>
-          <state>$PROJ_DIR$\..\..\..\..\..\..\components\libraries\experimental_cli</state>
           <state>$PROJ_DIR$\..\..\..\..\..\..\components\libraries\experimental_log</state>
           <state>$PROJ_DIR$\..\..\..\..\..\..\components\libraries\experimental_log\src</state>
           <state>$PROJ_DIR$\..\..\..\..\..\..\components\libraries\experimental_memobj</state>
@@ -793,6 +798,7 @@
           <state>$PROJ_DIR$\..\..\..\..\..\..\components\libraries\strerror</state>
           <state>$PROJ_DIR$\..\..\..\..\..\..\components\libraries\timer</state>
           <state>$PROJ_DIR$\..\..\..\..\..\..\components\libraries\twi</state>
+          <state>$PROJ_DIR$\..\..\..\..\..\..\components\libraries\twi_mngr</state>
           <state>$PROJ_DIR$\..\..\..\..\..\..\components\libraries\uart</state>
           <state>$PROJ_DIR$\..\..\..\..\..\..\components\libraries\usbd</state>
           <state>$PROJ_DIR$\..\..\..\..\..\..\components\libraries\usbd\class\audio</state>
@@ -1301,13 +1307,22 @@
   <group>
     <name>nRF_BLE_Services</name>
     <file>
-      <name>$PROJ_DIR$\..\..\..\..\..\..\components\ble\ble_services\ble_bas\ble_bas.c</name>
-    </file>
-    <file>
       <name>$PROJ_DIR$\..\..\..\custom_code\ble_bcs.c</name>
     </file>
     <file>
       <name>$PROJ_DIR$\..\..\..\..\..\..\components\ble\ble_services\ble_tps\ble_tps.c</name>
+    </file>
+  </group>
+  <group>
+    <name>nRF_DFU</name>
+    <file>
+      <name>$PROJ_DIR$\..\..\..\..\..\..\components\ble\ble_services\ble_dfu\ble_dfu.c</name>
+    </file>
+    <file>
+      <name>$PROJ_DIR$\..\..\..\..\..\..\components\ble\ble_services\ble_dfu\ble_dfu_bonded.c</name>
+    </file>
+    <file>
+      <name>$PROJ_DIR$\..\..\..\..\..\..\components\ble\ble_services\ble_dfu\ble_dfu_unbonded.c</name>
     </file>
   </group>
   <group>
@@ -1418,13 +1433,13 @@
   <group>
     <name>nRF_Segger_RTT</name>
     <file>
-      <name>$PROJ_DIR$\..\..\..\..\..\..\external\segger_rtt\RTT_Syscalls_IAR.c</name>
-    </file>
-    <file>
       <name>$PROJ_DIR$\..\..\..\..\..\..\external\segger_rtt\SEGGER_RTT.c</name>
     </file>
     <file>
       <name>$PROJ_DIR$\..\..\..\..\..\..\external\segger_rtt\SEGGER_RTT_printf.c</name>
+    </file>
+    <file>
+      <name>$PROJ_DIR$\..\..\..\..\..\..\external\segger_rtt\SEGGER_RTT_Syscalls_IAR.c</name>
     </file>
   </group>
   <group>
@@ -1437,6 +1452,12 @@
     </file>
     <file>
       <name>$PROJ_DIR$\..\..\..\..\..\..\components\softdevice\common\nrf_sdh_soc.c</name>
+    </file>
+  </group>
+  <group>
+    <name>nRF_SVC</name>
+    <file>
+      <name>$PROJ_DIR$\..\..\..\..\..\..\components\libraries\bootloader\dfu\nrf_dfu_svci.c</name>
     </file>
   </group>
 </project>

@@ -2,7 +2,7 @@
 
 <project>
   <fileVersion>2</fileVersion>
-  <fileChecksum>2921935179</fileChecksum>
+  <fileChecksum>1888562110</fileChecksum>
   <configuration>
     <name>nrf52840_xxaa</name>
     <outputs/>

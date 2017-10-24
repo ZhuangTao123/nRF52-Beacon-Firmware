@@ -1254,13 +1254,22 @@
   <group>
     <name>nRF_BLE_Services</name>
     <file>
-      <name>$PROJ_DIR$\..\..\..\..\..\..\components\ble\ble_services\ble_bas\ble_bas.c</name>
-    </file>
-    <file>
       <name>$PROJ_DIR$\..\..\..\custom_code\ble_bcs.c</name>
     </file>
     <file>
       <name>$PROJ_DIR$\..\..\..\..\..\..\components\ble\ble_services\ble_tps\ble_tps.c</name>
+    </file>
+  </group>
+  <group>
+    <name>nRF_DFU</name>
+    <file>
+      <name>$PROJ_DIR$\..\..\..\..\..\..\components\ble\ble_services\ble_dfu\ble_dfu.c</name>
+    </file>
+    <file>
+      <name>$PROJ_DIR$\..\..\..\..\..\..\components\ble\ble_services\ble_dfu\ble_dfu_bonded.c</name>
+    </file>
+    <file>
+      <name>$PROJ_DIR$\..\..\..\..\..\..\components\ble\ble_services\ble_dfu\ble_dfu_unbonded.c</name>
     </file>
   </group>
   <group>
@@ -1371,13 +1380,13 @@
   <group>
     <name>nRF_Segger_RTT</name>
     <file>
-      <name>$PROJ_DIR$\..\..\..\..\..\..\external\segger_rtt\RTT_Syscalls_IAR.c</name>
-    </file>
-    <file>
       <name>$PROJ_DIR$\..\..\..\..\..\..\external\segger_rtt\SEGGER_RTT.c</name>
     </file>
     <file>
       <name>$PROJ_DIR$\..\..\..\..\..\..\external\segger_rtt\SEGGER_RTT_printf.c</name>
+    </file>
+    <file>
+      <name>$PROJ_DIR$\..\..\..\..\..\..\external\segger_rtt\SEGGER_RTT_Syscalls_IAR.c</name>
     </file>
   </group>
   <group>
@@ -1390,6 +1399,12 @@
     </file>
     <file>
       <name>$PROJ_DIR$\..\..\..\..\..\..\components\softdevice\common\nrf_sdh_soc.c</name>
+    </file>
+  </group>
+  <group>
+    <name>nRF_SVC</name>
+    <file>
+      <name>$PROJ_DIR$\..\..\..\..\..\..\components\libraries\bootloader\dfu\nrf_dfu_svci.c</name>
     </file>
   </group>
 </project>
