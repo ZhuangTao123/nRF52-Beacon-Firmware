@@ -1,6 +1,6 @@
 # README
 
-This is the firmware project of nRF52 series beacon. 
+This is the firmware project of nRF52 series beacon.
 
 ## What's NEW
 
@@ -24,7 +24,8 @@ This is the firmware project of nRF52 series beacon.
 
 ## How to Configure Beacons
 
-1. Make sure you have install the latest nRF Connect App from Google Play <a href='https://play.google.com/store/apps/details?id=no.nordicsemi.android.mcp&pcampaignid=MKT-Other-global-all-co-prtnr-py-PartBadge-Mar2515-1'><img style='width:90px;margin-bottom:-10px' alt='Get it on Google Play' src='https://play.google.com/intl/en_us/badges/images/generic/en_badge_web_generic.png'/></a>.  
+1. Make sure you have install the latest nRF Connect App from Google Play.  
+<a href='https://play.google.com/store/apps/details?id=no.nordicsemi.android.mcp&pcampaignid=MKT-Other-global-all-co-prtnr-py-PartBadge-Mar2515-1'><img style='width:90px' alt='Get it on Google Play' src='https://play.google.com/intl/en_us/badges/images/generic/en_badge_web_generic.png'/></a>  
 2. Find a beacon from the scanning list named 'LBTest' which broadcasts an ibeacon format advertisement with UUID  
    `67d3a402-2323-4574-9342-7b947dc430d1`  
    The device broadcasts a vendor specific UUID in the advertisement packet. That can be observed in `Complete list of 128-bit Service UUIDs:`  
