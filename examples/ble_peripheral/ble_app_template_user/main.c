@@ -99,7 +99,7 @@
 #define MANUFACTURER_NAME               "NordicSemiconductor"                   /**< Manufacturer. Will be passed to Device Information Service. */
 #define APP_ADV_FAST_INTERVAL           320                                     /**< The advertising interval (in units of 0.625 ms. This value corresponds to 100 ms). */
 #define APP_ADV_FAST_TIMEOUT            0                                       /**< The advertising timeout in units of seconds. */
-#define APP_ADV_SLOW_INTERVAL           3200                                    /**< The advertising interval (in units of 0.625 ms. This value corresponds to 1000 ms). */
+#define APP_ADV_SLOW_INTERVAL           1600                                    /**< The advertising interval (in units of 0.625 ms. This value corresponds to 1000 ms). */
 #define APP_ADV_SLOW_TIMEOUT            0                                       /**< The advertising timeout in units of seconds. */
 
 #define APP_BLE_OBSERVER_PRIO           3                                       /**< Application's BLE observer priority. You shouldn't need to modify this value. */
@@ -148,6 +148,10 @@
 #define PASSKEY_LENGTH                  6                                       /**< Length of pass-key received by the stack for display. */
 #define SECURITY_REQUEST_DELAY          APP_TIMER_TICKS(400)                    /**< Delay after connection until Security Request is sent, if necessary (ticks). */
 
+#define BTN_ID_LEDS_SWITCH				2
+#define BTN_ACTION_LEDS_SWITCH_ON		BSP_BUTTON_ACTION_PUSH
+#define BTN_ACTION_LEDS_SWITCH_OFF		BSP_BUTTON_ACTION_LONG_PUSH
+
 
 NRF_BLE_GATT_DEF(m_gatt);                                                       /**< GATT module instance. */
 BLE_ADVERTISING_DEF(m_advertising);                                             /**< Advertising module instance. */
@@ -159,12 +163,17 @@ APP_TIMER_DEF(m_sec_req_timer_id);                                              
 static pm_peer_id_t m_peer_to_be_deleted 	= PM_PEER_ID_INVALID;
 static uint16_t m_conn_handle 				= BLE_CONN_HANDLE_INVALID;                  /**< Handle of the current connection. */
 static int8_t	tx_power					= TX_POWER_LEVEL;							/**< Tx Power passed to the program. */
+#if defined(FAST_ADV)
 static uint16_t	app_adv_interval 			= APP_ADV_FAST_INTERVAL;					/**< Advertising interval passed to the program. */
+#else
+static uint16_t app_adv_interval			= APP_ADV_SLOW_INTERVAL;
+#endif
 static bool 	app_adv_param_update 		= false;
 static bool		app_tx_power_param_update 	= false;
 static bool		app_flash_update_state 		= false;
 static bool		is_bond_deleted				= false;
 static bool		is_dfu_disconnect			= false;
+static bool		is_advertising				= false;
 static uint8_t	passkey[]					= "703819";
 
 // YOUR_JOB: Use UUIDs for service(s) used in your application.
@@ -191,7 +200,11 @@ beacon_conf_flash_t	beacon_conf =
 	.uuid_major_minor = {APP_BEACON_UUID, APP_MAJOR_VALUE, APP_MINOR_VALUE},
 	.rssi_ref_stored = APP_MEASURED_RSSI,
 	.tx_power_stored = TX_POWER_LEVEL,
+#if defined(FAST_ADV)
 	.advertising_interval_stored = APP_ADV_FAST_INTERVAL
+#else
+	.advertising_interval_stored = APP_ADV_SLOW_INTERVAL
+#endif
 };
 
 static void advertising_init(void);
@@ -339,6 +352,22 @@ static void load_uicr_configuration(void)
 
 	memcpy(&beacon_conf.uuid_major_minor[16], &m_beacon_info[MAJ_VAL_OFFSET_IN_BEACON_INFO], 4);
 #endif
+}
+
+/**@brief Function for reconfigure bsp user keys.
+ *
+ * @param[in] void
+ */
+static void leds_buttons_configure()
+{
+	uint32_t	err_code;
+
+	err_code = bsp_event_to_button_action_assign(BTN_ID_LEDS_SWITCH, BTN_ACTION_LEDS_SWITCH_ON, BSP_EVENT_KEY_1);
+	APP_ERROR_CHECK(err_code);
+	
+	err_code = bsp_event_to_button_action_assign(BTN_ID_LEDS_SWITCH, BTN_ACTION_LEDS_SWITCH_OFF, BSP_EVENT_KEY_2);
+	APP_ERROR_CHECK(err_code);
+	
 }
 
 /**@brief Function for handling Peer Manager events.
@@ -768,11 +797,13 @@ static void on_adv_evt(ble_adv_evt_t ble_adv_evt)
     {
         case BLE_ADV_EVT_FAST:
             NRF_LOG_INFO("Fast advertising.");
-            err_code = bsp_indication_set(BSP_INDICATE_ADVERTISING);
-            APP_ERROR_CHECK(err_code);
+			is_advertising = true;
+            //err_code = bsp_indication_set(BSP_INDICATE_ADVERTISING);
+            //APP_ERROR_CHECK(err_code);
             break;
 
         case BLE_ADV_EVT_IDLE:
+			is_advertising = false;
             sleep_mode_enter();
             break;
 
@@ -797,6 +828,9 @@ static void ble_evt_handler(ble_evt_t const * p_ble_evt, void * p_context)
         case BLE_GAP_EVT_DISCONNECTED:
             NRF_LOG_INFO("Disconnected.");
 			m_conn_handle = BLE_CONN_HANDLE_INVALID;
+			// Turn off connection indication LED.
+			err_code = bsp_indication_set(BSP_INDICATE_IDLE);
+			APP_ERROR_CHECK(err_code);
             // LED indication will be changed when advertising starts.
             if((peer_count = pm_peer_count()) > 0 && is_dfu_disconnect == false)
 			{
@@ -831,6 +865,7 @@ static void ble_evt_handler(ble_evt_t const * p_ble_evt, void * p_context)
         case BLE_GAP_EVT_CONNECTED:
             NRF_LOG_INFO("Connected.");
 			m_peer_to_be_deleted = PM_PEER_ID_INVALID;
+			is_advertising = false;
             err_code = bsp_indication_set(BSP_INDICATE_CONNECTED);
             APP_ERROR_CHECK(err_code);
             m_conn_handle = p_ble_evt->evt.gap_evt.conn_handle;
@@ -993,10 +1028,6 @@ static void bsp_event_handler(bsp_event_t event)
 
     switch (event)
     {
-        case BSP_EVENT_SLEEP:
-            sleep_mode_enter();
-            break; // BSP_EVENT_SLEEP
-
         case BSP_EVENT_DISCONNECT:
             err_code = sd_ble_gap_disconnect(m_conn_handle,
                                              BLE_HCI_REMOTE_USER_TERMINATED_CONNECTION);
@@ -1006,16 +1037,19 @@ static void bsp_event_handler(bsp_event_t event)
             }
             break; // BSP_EVENT_DISCONNECT
 
-        case BSP_EVENT_WHITELIST_OFF:
-            if (m_conn_handle == BLE_CONN_HANDLE_INVALID)
-            {
-                err_code = ble_advertising_restart_without_whitelist(&m_advertising);
-                if (err_code != NRF_ERROR_INVALID_STATE)
-                {
-                    APP_ERROR_CHECK(err_code);
-                }
-            }
-            break; // BSP_EVENT_KEY_0
+		// The LED switching events are assigned to BUTTON_2
+		case BSP_EVENT_KEY_1:
+			if((is_advertising == true) && (m_conn_handle == BLE_CONN_HANDLE_INVALID))
+			{
+				err_code = bsp_indication_set(BSP_INDICATE_ADVERTISING);
+				APP_ERROR_CHECK(err_code);
+			}
+			break;
+
+		case BSP_EVENT_KEY_2:
+			err_code = bsp_indication_set(BSP_INDICATE_IDLE);
+			APP_ERROR_CHECK(err_code);
+			break;
 
         default:
             break;
@@ -1065,7 +1099,7 @@ static void advertising_init(void)
 
     init.config.ble_adv_fast_enabled  = true;
     init.config.ble_adv_fast_interval = app_adv_interval;
-    init.config.ble_adv_fast_timeout  = APP_ADV_FAST_TIMEOUT;
+    init.config.ble_adv_fast_timeout  = 0;
 
     init.evt_handler = on_adv_evt;
 
@@ -1083,15 +1117,19 @@ static void advertising_init(void)
 static void buttons_leds_init(bool * p_erase_bonds)
 {
     ret_code_t err_code;
-    bsp_event_t startup_event;
+    //bsp_event_t startup_event;
 
-    err_code = bsp_init(BSP_INIT_LED, bsp_event_handler);
+    err_code = bsp_init(BSP_INIT_LED | BSP_INIT_BUTTONS, bsp_event_handler);
     APP_ERROR_CHECK(err_code);
 
-    err_code = bsp_btn_ble_init(NULL, &startup_event);
-    APP_ERROR_CHECK(err_code);
+#if	LEDS_NUMBER > 0
+	leds_buttons_configure();
+#endif	// LEDS_NUMBER > 0
 
-    *p_erase_bonds = (startup_event == BSP_EVENT_CLEAR_BONDING_DATA);
+    //err_code = bsp_btn_ble_init(NULL, &startup_event);
+    //APP_ERROR_CHECK(err_code);
+
+    //*p_erase_bonds = (startup_event == BSP_EVENT_CLEAR_BONDING_DATA);
 }
 
 
@@ -1146,7 +1184,7 @@ static void power_management_init(void)
  */
 int main(void)
 {
-    bool erase_bonds;
+    bool erase_bonds = true;
 	ret_code_t err_code;
 
     // Initialize.
