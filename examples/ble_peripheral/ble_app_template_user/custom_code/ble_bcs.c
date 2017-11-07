@@ -144,7 +144,7 @@ static uint32_t advint_char_add(ble_bcs_t * p_bcs, const ble_bcs_init_t * p_bcs_
 	
 	char_md.char_props.read			 = 1;
 	char_md.char_props.write         = 1;
-	char_md.char_props.write_wo_resp = 1;
+	char_md.char_props.write_wo_resp = 0;
 	char_md.p_char_user_desc         = NULL;
 	char_md.p_char_pf                = NULL;
 	char_md.p_user_desc_md           = NULL;
