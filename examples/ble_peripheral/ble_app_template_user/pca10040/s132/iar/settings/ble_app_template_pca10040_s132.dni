@@ -18,7 +18,7 @@ TraceBufferSize=0x00010000
 TraceStallIfFIFOFull=0x00000000
 TracePortSize=0x00000004
 [DebugChecksum]
-Checksum=616554834
+Checksum=-761369713
 [CodeCoverage]
 Enabled=_ 0
 [Exceptions]
@@ -45,6 +45,8 @@ ITMportsEnable=0
 ITMportsTermIO=0
 ITMportsLogFile=0
 ITMlogFile=$PROJ_DIR$\ITM.log
+[watch_formats]
+Fmt0={W}42:adc_value	3	0
 [Trace1]
 Enabled=0
 ShowSource=1

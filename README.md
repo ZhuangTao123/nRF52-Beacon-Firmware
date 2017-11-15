@@ -45,6 +45,7 @@ This is the firmware project of nRF52 series beacon.
      >Send 21 bytes array, contain UUID, Major, Minor and RSSI value in hex format  
    * Advertising Interval Character  
      >Send a 16-bit positive value in decimal format, choose UINT16  
-* **Tx Power Service.**  
-* **Secure DFU Service.**  
+* **Tx Power Service.**   
+* **Battery Service.**   
+* **Secure DFU Service.**   
 5. Disconnect the device to valid the new configuration. Then delete bond information in the nRF Connect App if you leave the debug mode.

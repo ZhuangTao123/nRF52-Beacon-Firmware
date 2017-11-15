@@ -75,6 +75,11 @@
 #include "ble_conn_state.h"
 #include "nrf_ble_gatt.h"
 
+// SAADC include files
+#include "nrf_drv_saadc.h"
+#include "nrf_drv_ppi.h"
+#include "nrf_drv_timer.h"
+
 #include "nrf_log.h"
 #include "nrf_log_ctrl.h"
 #include "nrf_log_default_backends.h"
@@ -88,6 +93,7 @@
 #include "nrf_drv_clock.h"
 
 // Custom include files
+#include "ble_bas.h"
 #include "ble_bcs.h"
 #include "ble_tps.h"
 #include "bdef_file_m.h"
@@ -155,9 +161,12 @@
 
 NRF_BLE_GATT_DEF(m_gatt);                                                       /**< GATT module instance. */
 BLE_ADVERTISING_DEF(m_advertising);                                             /**< Advertising module instance. */
+BLE_BAS_DEF(m_bas);                                            			        /**< Structure used to identify the battery service. */
 BLE_BCS_DEF(m_bcs);																/**< Beacon Service instance. */
 BLE_TPS_DEF(m_tps);																/**< Tx Power Service instance. */
 APP_TIMER_DEF(m_sec_req_timer_id);                                              /**< Security Request timer. */
+APP_TIMER_DEF(m_saadc_timer_id);												/**< SAADC timer. */
+
 
 // Global variables in the application
 static pm_peer_id_t m_peer_to_be_deleted 	= PM_PEER_ID_INVALID;
@@ -175,6 +184,20 @@ static bool		is_bond_deleted				= false;
 static bool		is_dfu_disconnect			= false;
 static bool		is_advertising				= false;
 static uint8_t	passkey[]					= "703819";
+
+// Local variables in the saadc part
+#define SAMPLES_IN_BUFFER 	 				1
+#define SAADC_SAMPLE_INTERVAL				APP_TIMER_TICKS(1000)
+#define BAT_MAX_VOLTAGE						3
+#define BAT_MIN_VOLTAGE						2.143
+#define SAADC_BAT_MAX_VALUE					852.5
+#define SAADC_BAT_MIN_VALUE					608.969
+#define SAADC_BAT_DELTA						243.531
+static nrf_saadc_value_t     				m_buffer_pool[2][SAMPLES_IN_BUFFER];
+static uint8_t				 				adc_value;
+static uint16_t	saadc_sampling_hours 		= 3600;
+static bool		saadc_sampling_first_time	= true;
+
 
 // YOUR_JOB: Use UUIDs for service(s) used in your application.
 static ble_uuid_t m_adv_uuids[] =                                               /**< Universally unique service identifiers. */
@@ -209,6 +232,8 @@ beacon_conf_flash_t	beacon_conf =
 
 static void advertising_init(void);
 static void advertising_start(bool erase_bonds);
+void saadc_init(void);
+
 
 /**@brief Handler for shutdown preparation.
  *
@@ -311,6 +336,27 @@ static void ble_dfu_evt_handler(ble_dfu_buttonless_evt_type_t event)
     }
 }
 
+/**@brief Function for performing battery measurement and updating the Battery Level characteristic
+ *        in Battery Service.
+ */
+static void battery_level_update(uint8_t new_level)
+{
+    ret_code_t err_code;
+    uint8_t  battery_level;
+
+    battery_level = new_level;
+
+    err_code = ble_bas_battery_level_update(&m_bas, battery_level);
+    if ((err_code != NRF_SUCCESS) &&
+        (err_code != NRF_ERROR_INVALID_STATE) &&
+        (err_code != NRF_ERROR_RESOURCES) &&
+        (err_code != BLE_ERROR_GATTS_SYS_ATTR_MISSING)
+       )
+    {
+        APP_ERROR_HANDLER(err_code);
+    }
+}
+
 /**@brief Callback function for asserts in the SoftDevice.
  *
  * @details This function will be called in case of an assert in the SoftDevice.
@@ -326,6 +372,53 @@ void assert_nrf_callback(uint16_t line_num, const uint8_t * p_file_name)
 {
     app_error_handler(DEAD_BEEF, line_num, p_file_name);
 }
+
+static void saadc_timeout_handler(void * p_context)
+{
+
+	ret_code_t err_code;
+
+	UNUSED_PARAMETER(p_context);
+
+	if(saadc_sampling_first_time == true || (--saadc_sampling_hours) == 0)
+	{
+		saadc_sampling_hours = 3600;
+		saadc_sampling_first_time = false;
+		
+		saadc_init();
+		nrf_drv_saadc_sample();
+	}
+	//bsp_board_led_invert(BSP_BOARD_LED_1);
+
+	err_code = app_timer_start(m_saadc_timer_id, SAADC_SAMPLE_INTERVAL, NULL);
+	APP_ERROR_CHECK(err_code);
+}
+
+
+void saadc_callback(nrf_drv_saadc_evt_t const * p_event)
+{
+    if (p_event->type == NRF_DRV_SAADC_EVT_DONE)
+    {
+        ret_code_t err_code;
+		float adc_temp_value;
+
+        err_code = nrf_drv_saadc_buffer_convert(p_event->data.done.p_buffer, SAMPLES_IN_BUFFER);
+        APP_ERROR_CHECK(err_code);
+
+		//bsp_board_led_invert(BSP_BOARD_LED_1);
+
+		adc_temp_value = p_event->data.done.p_buffer[0];
+		adc_value = (uint8_t)((adc_temp_value - SAADC_BAT_MIN_VALUE)/SAADC_BAT_DELTA * 100);
+
+		battery_level_update(adc_value);
+
+		// Close saadc peripheral
+		nrf_drv_saadc_uninit();
+		NRF_SAADC->INTENCLR = (SAADC_INTENCLR_END_Clear << SAADC_INTENCLR_END_Pos);
+		NVIC_ClearPendingIRQ(SAADC_IRQn);
+    }
+}
+
 
 static void load_uicr_configuration(void)
 {
@@ -496,6 +589,7 @@ static void pm_evt_handler(pm_evt_t const * p_evt)
     }
 }
 
+
 /**@brief Function for handling the Security Request timer timeout.
  *
  * @details This function will be called each time the Security Request timer expires.
@@ -536,6 +630,10 @@ static void timers_init(void)
                                 APP_TIMER_MODE_SINGLE_SHOT,
                                 sec_req_timeout_handler);
     APP_ERROR_CHECK(err_code);
+
+	err_code = app_timer_create(&m_saadc_timer_id,
+								APP_TIMER_MODE_SINGLE_SHOT,
+								saadc_timeout_handler);
 
 }
 
@@ -658,6 +756,7 @@ static void services_init(void)
 {
 	ret_code_t			err_code;
     ble_bcs_init_t		bcs_init;
+	ble_bas_init_t		bas_init;
 	ble_tps_init_t		tps_init;
 	ble_dfu_buttonless_init_t dfus_init =
     {
@@ -685,13 +784,32 @@ static void services_init(void)
 	err_code = ble_tps_init(&m_tps, &tps_init);
 	APP_ERROR_CHECK(err_code);
 
+	// Initialize the Battery Service
+	memset(&bas_init, 0, sizeof(bas_init));
+
+	// Here the sec level for the Battery Service can be changed/increased.
+	BLE_GAP_CONN_SEC_MODE_SET_ENC_WITH_MITM(&bas_init.battery_level_char_attr_md.cccd_write_perm);
+	BLE_GAP_CONN_SEC_MODE_SET_ENC_WITH_MITM(&bas_init.battery_level_char_attr_md.read_perm);
+	BLE_GAP_CONN_SEC_MODE_SET_NO_ACCESS(&bas_init.battery_level_char_attr_md.write_perm);
+	BLE_GAP_CONN_SEC_MODE_SET_ENC_WITH_MITM(&bas_init.battery_level_report_read_perm);
+
+	bas_init.evt_handler = NULL;
+	bas_init.support_notification = true;
+	bas_init.p_report_ref = NULL;
+	bas_init.initial_batt_level = 100;
+
+	err_code = ble_bas_init(&m_bas, &bas_init);
+	APP_ERROR_CHECK(err_code);
+
 	// Initialize the async SVCI interface to bootloader.
+#ifdef DFU_SERVICE
     err_code = ble_dfu_buttonless_async_svci_init();
     APP_ERROR_CHECK(err_code);
 
 
     err_code = ble_dfu_buttonless_init(&dfus_init);
     APP_ERROR_CHECK(err_code);
+#endif
 }
 
 
@@ -759,6 +877,10 @@ static void application_timers_start(void)
        err_code = app_timer_start(m_app_timer_id, TIMER_INTERVAL, NULL);
        APP_ERROR_CHECK(err_code); */
 
+	ret_code_t	err_code;
+
+	err_code = app_timer_start(m_saadc_timer_id, SAADC_SAMPLE_INTERVAL, NULL);
+	APP_ERROR_CHECK(err_code);
 }
 
 
@@ -857,9 +979,11 @@ static void ble_evt_handler(ble_evt_t const * p_ble_evt, void * p_context)
 			{
 				app_adv_param_update = false;
 				advertising_init();
-				//err_code = ble_advertising_start(&m_advertising, BLE_ADV_MODE_FAST);
-				//APP_ERROR_CHECK(err_code);
 			}
+
+			err_code = ble_advertising_start(&m_advertising, BLE_ADV_MODE_FAST);
+			APP_ERROR_CHECK(err_code);
+			
             break;
 
         case BLE_GAP_EVT_CONNECTED:
@@ -1066,7 +1190,7 @@ static void advertising_init(void)
 
     memset(&init, 0, sizeof(init));
 
-#if defined(USE_IBEACON_PROTOCOL)
+#ifdef USE_IBEACON_PROTOCOL
     ble_advdata_manuf_data_t manuf_specific_data;
     manuf_specific_data.company_identifier = APP_COMPANY_IDENTIFIER;
 
@@ -1100,6 +1224,7 @@ static void advertising_init(void)
     init.config.ble_adv_fast_enabled  = true;
     init.config.ble_adv_fast_interval = app_adv_interval;
     init.config.ble_adv_fast_timeout  = 0;
+	init.config.ble_adv_on_disconnect_disabled = true;
 
     init.evt_handler = on_adv_evt;
 
@@ -1177,6 +1302,27 @@ static void power_management_init(void)
 {
     uint32_t err_code = nrf_pwr_mgmt_init();
     APP_ERROR_CHECK(err_code);
+}
+
+
+void saadc_init(void)
+{
+    ret_code_t err_code;
+    nrf_saadc_channel_config_t channel_config =
+        NRF_DRV_SAADC_DEFAULT_CHANNEL_CONFIG_SE(NRF_SAADC_INPUT_AIN0);
+
+    err_code = nrf_drv_saadc_init(NULL, saadc_callback);
+    APP_ERROR_CHECK(err_code);
+
+    err_code = nrf_drv_saadc_channel_init(0, &channel_config);
+    APP_ERROR_CHECK(err_code);
+
+    err_code = nrf_drv_saadc_buffer_convert(m_buffer_pool[0], SAMPLES_IN_BUFFER);
+    APP_ERROR_CHECK(err_code);
+
+    err_code = nrf_drv_saadc_buffer_convert(m_buffer_pool[1], SAMPLES_IN_BUFFER);
+    APP_ERROR_CHECK(err_code);
+
 }
 
 

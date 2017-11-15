@@ -25,7 +25,7 @@ if not "%~1" == "" goto debugFile
 
 @echo on 
 
-"C:\Program Files (x86)\IAR Systems\Embedded Workbench 7.5\common\bin\cspybat" -f "C:\Users\ZC Liu\Work\Legolova\lzc\nRF5_SDK_14.1.0_1dda907\examples\ble_peripheral\ble_app_template_user\pca10040\s132\iar\settings\ble_app_template_pca10040_s132.nrf52832_xxaa.general.xcl" --backend -f "C:\Users\ZC Liu\Work\Legolova\lzc\nRF5_SDK_14.1.0_1dda907\examples\ble_peripheral\ble_app_template_user\pca10040\s132\iar\settings\ble_app_template_pca10040_s132.nrf52832_xxaa.driver.xcl" 
+"C:\Program Files (x86)\IAR Systems\Embedded Workbench 7.5\common\bin\cspybat" -f "C:\Users\ZC Liu\Work\Legolova\lzc\nRF5_SDK_14.1.0_1dda907\examples\ble_peripheral\ble_app_template_user\pca10040\s132\iar\settings\ble_app_template_pca10040_s132.Release.general.xcl" --backend -f "C:\Users\ZC Liu\Work\Legolova\lzc\nRF5_SDK_14.1.0_1dda907\examples\ble_peripheral\ble_app_template_user\pca10040\s132\iar\settings\ble_app_template_pca10040_s132.Release.driver.xcl" 
 
 @echo off 
 goto end 
@@ -34,7 +34,7 @@ goto end
 
 @echo on 
 
-"C:\Program Files (x86)\IAR Systems\Embedded Workbench 7.5\common\bin\cspybat" -f "C:\Users\ZC Liu\Work\Legolova\lzc\nRF5_SDK_14.1.0_1dda907\examples\ble_peripheral\ble_app_template_user\pca10040\s132\iar\settings\ble_app_template_pca10040_s132.nrf52832_xxaa.general.xcl" "--debug_file=%~1" --backend -f "C:\Users\ZC Liu\Work\Legolova\lzc\nRF5_SDK_14.1.0_1dda907\examples\ble_peripheral\ble_app_template_user\pca10040\s132\iar\settings\ble_app_template_pca10040_s132.nrf52832_xxaa.driver.xcl" 
+"C:\Program Files (x86)\IAR Systems\Embedded Workbench 7.5\common\bin\cspybat" -f "C:\Users\ZC Liu\Work\Legolova\lzc\nRF5_SDK_14.1.0_1dda907\examples\ble_peripheral\ble_app_template_user\pca10040\s132\iar\settings\ble_app_template_pca10040_s132.Release.general.xcl" "--debug_file=%~1" --backend -f "C:\Users\ZC Liu\Work\Legolova\lzc\nRF5_SDK_14.1.0_1dda907\examples\ble_peripheral\ble_app_template_user\pca10040\s132\iar\settings\ble_app_template_pca10040_s132.Release.driver.xcl" 
 
 @echo off 
 :end

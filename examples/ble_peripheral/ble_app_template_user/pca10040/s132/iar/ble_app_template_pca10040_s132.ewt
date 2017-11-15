@@ -1254,6 +1254,9 @@
   <group>
     <name>nRF_BLE_Services</name>
     <file>
+      <name>$PROJ_DIR$\..\..\..\..\..\..\components\ble\ble_services\ble_bas\ble_bas.c</name>
+    </file>
+    <file>
       <name>$PROJ_DIR$\..\..\..\custom_code\ble_bcs.c</name>
     </file>
     <file>
@@ -1284,7 +1287,19 @@
       <name>$PROJ_DIR$\..\..\..\..\..\..\components\drivers_nrf\gpiote\nrf_drv_gpiote.c</name>
     </file>
     <file>
+      <name>$PROJ_DIR$\..\..\..\..\..\..\components\drivers_nrf\ppi\nrf_drv_ppi.c</name>
+    </file>
+    <file>
+      <name>$PROJ_DIR$\..\..\..\..\..\..\components\drivers_nrf\saadc\nrf_drv_saadc.c</name>
+    </file>
+    <file>
+      <name>$PROJ_DIR$\..\..\..\..\..\..\components\drivers_nrf\timer\nrf_drv_timer.c</name>
+    </file>
+    <file>
       <name>$PROJ_DIR$\..\..\..\..\..\..\components\drivers_nrf\uart\nrf_drv_uart.c</name>
+    </file>
+    <file>
+      <name>$PROJ_DIR$\..\..\..\..\..\..\components\drivers_nrf\hal\nrf_saadc.c</name>
     </file>
   </group>
   <group>
