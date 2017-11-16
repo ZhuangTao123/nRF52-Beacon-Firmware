@@ -107,6 +107,8 @@
 #define APP_ADV_FAST_TIMEOUT            0                                       /**< The advertising timeout in units of seconds. */
 #define APP_ADV_SLOW_INTERVAL           1600                                    /**< The advertising interval (in units of 0.625 ms. This value corresponds to 1000 ms). */
 #define APP_ADV_SLOW_TIMEOUT            0                                       /**< The advertising timeout in units of seconds. */
+#define LBATALERT_INTERVAL				100
+#define LBATALERT_TIMEOUT_INTERVAL		APP_TIMER_TICKS(2000)
 
 #define APP_BLE_OBSERVER_PRIO           3                                       /**< Application's BLE observer priority. You shouldn't need to modify this value. */
 #define APP_BLE_CONN_CFG_TAG            1                                       /**< A tag identifying the SoftDevice BLE configuration. */
@@ -157,6 +159,8 @@
 #define BTN_ID_LEDS_SWITCH				2
 #define BTN_ACTION_LEDS_SWITCH_ON		BSP_BUTTON_ACTION_PUSH
 #define BTN_ACTION_LEDS_SWITCH_OFF		BSP_BUTTON_ACTION_LONG_PUSH
+#define BTN_ID_LBAT_TEST_SWITCH			1
+#define BTN_ACTION_LBAT_TRIGGER_ON		BSP_BUTTON_ACTION_PUSH
 
 
 NRF_BLE_GATT_DEF(m_gatt);                                                       /**< GATT module instance. */
@@ -166,12 +170,15 @@ BLE_BCS_DEF(m_bcs);																/**< Beacon Service instance. */
 BLE_TPS_DEF(m_tps);																/**< Tx Power Service instance. */
 APP_TIMER_DEF(m_sec_req_timer_id);                                              /**< Security Request timer. */
 APP_TIMER_DEF(m_saadc_timer_id);												/**< SAADC timer. */
+APP_TIMER_DEF(m_lbat_timer_id);
+
 
 
 // Global variables in the application
 static pm_peer_id_t m_peer_to_be_deleted 	= PM_PEER_ID_INVALID;
 static uint16_t m_conn_handle 				= BLE_CONN_HANDLE_INVALID;                  /**< Handle of the current connection. */
 static int8_t	tx_power					= TX_POWER_LEVEL;							/**< Tx Power passed to the program. */
+static uint8_t	lbat_alert_data[]			= "LBATALERT";
 #if defined(FAST_ADV)
 static uint16_t	app_adv_interval 			= APP_ADV_FAST_INTERVAL;					/**< Advertising interval passed to the program. */
 #else
@@ -183,6 +190,7 @@ static bool		app_flash_update_state 		= false;
 static bool		is_bond_deleted				= false;
 static bool		is_dfu_disconnect			= false;
 static bool		is_advertising				= false;
+static bool		is_low_battery				= false;
 static uint8_t	passkey[]					= "703819";
 
 // Local variables in the saadc part
@@ -373,9 +381,25 @@ void assert_nrf_callback(uint16_t line_num, const uint8_t * p_file_name)
     app_error_handler(DEAD_BEEF, line_num, p_file_name);
 }
 
+static void lbat_timeout_handler(void * p_context)
+{
+	ret_code_t err_code;
+	UNUSED_PARAMETER(p_context);
+
+	err_code = sd_ble_gap_adv_stop();
+	if (err_code != NRF_ERROR_INVALID_STATE)
+    {
+        APP_ERROR_CHECK(err_code);
+    }
+	is_low_battery = false;
+	
+	advertising_init();
+	err_code = ble_advertising_start(&m_advertising, BLE_ADV_MODE_FAST);
+	APP_ERROR_CHECK(err_code);
+}
+
 static void saadc_timeout_handler(void * p_context)
 {
-
 	ret_code_t err_code;
 
 	UNUSED_PARAMETER(p_context);
@@ -410,12 +434,30 @@ void saadc_callback(nrf_drv_saadc_evt_t const * p_event)
 		adc_temp_value = p_event->data.done.p_buffer[0];
 		adc_value = (uint8_t)((adc_temp_value - SAADC_BAT_MIN_VALUE)/SAADC_BAT_DELTA * 100);
 
+		// Update battery service characteristic
 		battery_level_update(adc_value);
 
 		// Close saadc peripheral
 		nrf_drv_saadc_uninit();
 		NRF_SAADC->INTENCLR = (SAADC_INTENCLR_END_Clear << SAADC_INTENCLR_END_Pos);
 		NVIC_ClearPendingIRQ(SAADC_IRQn);
+
+		//Check whether it reaches battery low alert
+		if(adc_value <= 20 && m_conn_handle == BLE_CONN_HANDLE_INVALID)
+		{
+			err_code = sd_ble_gap_adv_stop();
+			if (err_code != NRF_ERROR_INVALID_STATE)
+    		{
+        		APP_ERROR_CHECK(err_code);
+    		}
+			is_low_battery = true;
+			advertising_init();
+			err_code = ble_advertising_start(&m_advertising, BLE_ADV_MODE_FAST);
+			APP_ERROR_CHECK(err_code);
+
+			err_code = app_timer_start(m_lbat_timer_id, LBATALERT_TIMEOUT_INTERVAL, NULL);
+			APP_ERROR_CHECK(err_code);
+		}
     }
 }
 
@@ -459,6 +501,9 @@ static void leds_buttons_configure()
 	APP_ERROR_CHECK(err_code);
 	
 	err_code = bsp_event_to_button_action_assign(BTN_ID_LEDS_SWITCH, BTN_ACTION_LEDS_SWITCH_OFF, BSP_EVENT_KEY_2);
+	APP_ERROR_CHECK(err_code);
+
+	err_code = bsp_event_to_button_action_assign(BTN_ID_LBAT_TEST_SWITCH, BTN_ACTION_LBAT_TRIGGER_ON, BSP_EVENT_KEY_3);
 	APP_ERROR_CHECK(err_code);
 	
 }
@@ -634,6 +679,12 @@ static void timers_init(void)
 	err_code = app_timer_create(&m_saadc_timer_id,
 								APP_TIMER_MODE_SINGLE_SHOT,
 								saadc_timeout_handler);
+	APP_ERROR_CHECK(err_code);
+
+	err_code = app_timer_create(&m_lbat_timer_id, 
+								APP_TIMER_MODE_SINGLE_SHOT, 
+								lbat_timeout_handler);
+	APP_ERROR_CHECK(err_code);
 
 }
 
@@ -1175,6 +1226,23 @@ static void bsp_event_handler(bsp_event_t event)
 			APP_ERROR_CHECK(err_code);
 			break;
 
+		case BSP_EVENT_KEY_3:
+			if(m_conn_handle == BLE_CONN_HANDLE_INVALID)
+			{
+				err_code = sd_ble_gap_adv_stop();
+				if (err_code != NRF_ERROR_INVALID_STATE)
+    			{
+        			APP_ERROR_CHECK(err_code);
+    			}
+				is_low_battery = true;
+				advertising_init();
+				err_code = ble_advertising_start(&m_advertising, BLE_ADV_MODE_FAST);
+				APP_ERROR_CHECK(err_code);
+
+				err_code = app_timer_start(m_lbat_timer_id, LBATALERT_TIMEOUT_INTERVAL, NULL);
+				APP_ERROR_CHECK(err_code);
+			}
+
         default:
             break;
     }
@@ -1204,8 +1272,16 @@ static void advertising_init(void)
 	// Retrieved advertising interval from flash/default configuration
 	app_adv_interval = beacon_conf.advertising_interval_stored;
 
-    manuf_specific_data.data.p_data = (uint8_t *) m_beacon_info;
-    manuf_specific_data.data.size   = APP_BEACON_INFO_LENGTH;
+	if(!is_low_battery)
+	{
+    	manuf_specific_data.data.p_data = (uint8_t *) m_beacon_info;
+    	manuf_specific_data.data.size   = APP_BEACON_INFO_LENGTH;
+	}
+	else
+	{
+		manuf_specific_data.data.p_data = lbat_alert_data;
+		manuf_specific_data.data.size = sizeof(lbat_alert_data);
+	}
 
     init.advdata.name_type               = BLE_ADVDATA_NO_NAME;
     init.advdata.flags                   = BLE_GAP_ADV_FLAGS_LE_ONLY_GENERAL_DISC_MODE;
@@ -1222,7 +1298,10 @@ static void advertising_init(void)
 #endif
 
     init.config.ble_adv_fast_enabled  = true;
-    init.config.ble_adv_fast_interval = app_adv_interval;
+	if(!is_low_battery)
+    	init.config.ble_adv_fast_interval = app_adv_interval;
+	else
+		init.config.ble_adv_fast_interval = LBATALERT_INTERVAL;
     init.config.ble_adv_fast_timeout  = 0;
 	init.config.ble_adv_on_disconnect_disabled = true;
 
