@@ -569,7 +569,7 @@ static void pm_evt_handler(pm_evt_t const * p_evt)
         case PM_EVT_CONN_SEC_CONFIG_REQ:
         {
             // Reject pairing request from an already bonded peer.
-            pm_conn_sec_config_t conn_sec_config = {.allow_repairing = false};
+            pm_conn_sec_config_t conn_sec_config = {.allow_repairing = true};
             pm_conn_sec_config_reply(p_evt->conn_handle, &conn_sec_config);
         } break;
 
@@ -994,7 +994,7 @@ static void on_adv_evt(ble_adv_evt_t ble_adv_evt)
 static void ble_evt_handler(ble_evt_t const * p_ble_evt, void * p_context)
 {
     ret_code_t err_code = NRF_SUCCESS;
-	uint8_t	peer_count = 0;
+	//uint8_t	peer_count = 0;
 
     switch (p_ble_evt->header.evt_id)
     {
@@ -1005,6 +1005,7 @@ static void ble_evt_handler(ble_evt_t const * p_ble_evt, void * p_context)
 			err_code = bsp_indication_set(BSP_INDICATE_IDLE);
 			APP_ERROR_CHECK(err_code);
             // LED indication will be changed when advertising starts.
+            /*
             if((peer_count = pm_peer_count()) > 0 && is_dfu_disconnect == false)
 			{
 				err_code = pm_peers_delete();
@@ -1012,6 +1013,7 @@ static void ble_evt_handler(ble_evt_t const * p_ble_evt, void * p_context)
 				err_code = pm_whitelist_set(NULL, 0);
 				APP_ERROR_CHECK(err_code);
 			}
+			*/
 			if(app_flash_update_state)
 			{
 				app_flash_update_state = false;
