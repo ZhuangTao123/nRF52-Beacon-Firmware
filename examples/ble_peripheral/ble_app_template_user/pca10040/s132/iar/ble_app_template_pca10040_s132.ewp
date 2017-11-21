@@ -2523,6 +2523,9 @@
       <name>$PROJ_DIR$\..\..\..\custom_code\ble_bcs.c</name>
     </file>
     <file>
+      <name>$PROJ_DIR$\..\..\..\..\..\..\components\ble\ble_services\ble_dis\ble_dis.c</name>
+    </file>
+    <file>
       <name>$PROJ_DIR$\..\..\..\..\..\..\components\ble\ble_services\ble_tps\ble_tps.c</name>
     </file>
   </group>

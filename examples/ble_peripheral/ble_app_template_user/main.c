@@ -96,13 +96,17 @@
 #include "ble_bas.h"
 #include "ble_bcs.h"
 #include "ble_tps.h"
+#include "ble_dis.h"
 #include "bdef_file_m.h"
 
 
 #define APP_FEATURE_NOT_SUPPORTED       BLE_GATT_STATUS_ATTERR_APP_BEGIN + 2    /**< Reply when unsupported features are requested. */
 
 #define DEVICE_NAME                     "LBTest"                       			/**< Name of device. Will be included in the advertising data. */
-#define MANUFACTURER_NAME               "NordicSemiconductor"                   /**< Manufacturer. Will be passed to Device Information Service. */
+#define MANUFACTURER_NAME               "Legolova Tech Ltd"                   	/**< Manufacturer. Will be passed to Device Information Service. */
+#define MODEL_NUMBER					"SNT-02S-SI"							/**< Model number. Will be passed to Device Information Service. */
+#define HW_VERSION						"V0.2"									/**< Hardware version. Will be passed to Device Information Service. */
+#define FW_VERSION						"V1.2.1"								/**< Firmware version. Will be passed to Device Information Service. */
 #define APP_ADV_FAST_INTERVAL           320                                     /**< The advertising interval (in units of 0.625 ms. This value corresponds to 100 ms). */
 #define APP_ADV_FAST_TIMEOUT            0                                       /**< The advertising timeout in units of seconds. */
 #define APP_ADV_SLOW_INTERVAL           1600                                    /**< The advertising interval (in units of 0.625 ms. This value corresponds to 1000 ms). */
@@ -809,6 +813,7 @@ static void services_init(void)
     ble_bcs_init_t		bcs_init;
 	ble_bas_init_t		bas_init;
 	ble_tps_init_t		tps_init;
+	ble_dis_init_t		dis_init;
 	ble_dfu_buttonless_init_t dfus_init =
     {
         .evt_handler = ble_dfu_evt_handler
@@ -850,6 +855,20 @@ static void services_init(void)
 	bas_init.initial_batt_level = 100;
 
 	err_code = ble_bas_init(&m_bas, &bas_init);
+	APP_ERROR_CHECK(err_code);
+
+	// Initialize the Device Information Service
+	memset(&dis_init, 0, sizeof(dis_init));
+
+	ble_srv_ascii_to_utf8(&dis_init.manufact_name_str, (char *)MANUFACTURER_NAME);
+	ble_srv_ascii_to_utf8(&dis_init.model_num_str, (char *)MODEL_NUMBER);
+	ble_srv_ascii_to_utf8(&dis_init.hw_rev_str, (char *)HW_VERSION);
+	ble_srv_ascii_to_utf8(&dis_init.fw_rev_str, (char *)FW_VERSION);
+
+	BLE_GAP_CONN_SEC_MODE_SET_ENC_WITH_MITM(&dis_init.dis_attr_md.read_perm);
+	BLE_GAP_CONN_SEC_MODE_SET_NO_ACCESS(&dis_init.dis_attr_md.write_perm);
+
+	err_code = ble_dis_init(&dis_init);
 	APP_ERROR_CHECK(err_code);
 
 	// Initialize the async SVCI interface to bootloader.
