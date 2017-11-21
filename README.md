@@ -8,7 +8,10 @@ This is the firmware project of nRF52 series beacon.
 2. Add Secure DFU BLE Bootloader.
 3. Add static PIN code and secure connection.
 4. Application can load UICR values when starting.
-5. Application can delete bonding information when disconnecting from central. User should re-enter PIN code everytime you connect to the device.
+5. Application requires user enter PIN code every time connecting to the device.   
+6. Add Battery Service that you can check battery level when connected to the device.
+7. Add Low Battery Level alert. When battery level is under 20 percent, the device advertises a special advertisement packet lasting 2 seconds every 1 hour.
+8. Add Device Information Service which allows user check device information when connected.
 
 ## How to install
 
@@ -47,5 +50,6 @@ This is the firmware project of nRF52 series beacon.
      >Send a 16-bit positive value in decimal format, choose UINT16  
 * **Tx Power Service.**   
 * **Battery Service.**   
+* **Device Information Service.**   
 * **Secure DFU Service.**   
 5. Disconnect the device to valid the new configuration. Then delete bond information in the nRF Connect App if you leave the debug mode.
